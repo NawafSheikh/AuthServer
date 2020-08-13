@@ -9,15 +9,16 @@ const port = 3000
 app.use(express.json())
 
 users = []
+refTokenList = []
 
 app.get('/', (req, res) => {
-  res.send('Hello World!')
+  res.json('Hello')
 })
 
 app.get('/users/info', AuthToken, (req, res) => {
   user = users.filter(user => user.name === req.user.name)
 
-  res.json()
+  res.json(user)
 })
 
 app.post('/users/create', async (req, res) => {
@@ -43,8 +44,10 @@ app.post('/users/login', async (req, res) =>
   }
   try {
     if(await bcrypt.compare(req.body.password, user.password)){
-      const accessToken = jwt.sign(user, process.env.ACCESS_TOKEN)
-      res.json(accessToken)
+      const accessToken = GenAccessToken(user)
+      const refToken = jwt.sign(user, process.env.REFRESH_TOKEN)
+      refTokenList.push(refToken)
+      res.json({accessToken: accessToken, refToken: refToken})
     } else {
       res.send('Password Wrong')
     }
@@ -52,6 +55,22 @@ app.post('/users/login', async (req, res) =>
     res.status(500).send()
   }
 })
+
+app.post('/users/token', (req, res) => {
+  const refToken = req.body.token
+  if(refToken == null) return res.sendStatus(401)
+  if(!refTokenList.includes(refToken)) return res.sendStatus(403)
+  jwt.verify(refToken, process.env.REFRESH_TOKEN, (err, user) => {
+    if(err) return res.sendStatus(403)
+    const accessToken = GenAccessToken({name: user.name, password: user.password})
+    res.json({accessToken: accessToken})
+  })
+})
+
+function GenAccessToken (user)
+{
+  return jwt.sign(user, process.env.ACCESS_TOKEN, {expiresIn:'30s'})
+}
 
 function AuthToken (req, res, next)
 {
