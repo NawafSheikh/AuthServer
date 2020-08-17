@@ -1,13 +1,21 @@
 require('dotenv').config()
 
 const express = require('express')
+var cors = require('cors');
 const app = express()
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
 const port = 3000
 
 app.use(express.json())
-
+app.use(cors())
+/*app.use(function(req, res, next) {
+  res.header("Access-Control-Allow-Origin", "*"); // update to match the domain you will make the request from
+  res.header("Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
+});
+*/
 users = []
 refTokenList = []
 
@@ -15,10 +23,13 @@ app.get('/', (req, res) => {
   res.json('Hello')
 })
 
-app.get('/users/info', AuthToken, (req, res) => {
-  user = users.filter(user => user.name === req.user.name)
+app.get('/users/check', AuthToken, (req, res) => {
+  users.filter(user => user.name === req.user.name)
+  res.sendStatus(200)
+})
 
-  res.json(user)
+app.get('/users/info', AuthToken, (req, res) => {
+  res.json(users.filter(user => user.name === req.user.name))
 })
 
 app.post('/users/create', async (req, res) => {
