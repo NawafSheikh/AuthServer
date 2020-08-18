@@ -7,13 +7,19 @@ var cors = require('cors');
 const app = express()
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken');
-const e = require('express');
+const mongoose = require('mongoose')
+const Account = require('./models/account')
 const port = 3000
 const FacebookStrategy = strategy.Strategy;
 
 fbuser = null
-users = []
 refTokenList = []
+
+mongoose.connect('mongodb://localhost/accounts', { useNewUrlParser: true, useUnifiedTopology: true }, () => {
+  console.log("Successful connection")
+}).catch(err => {
+  console.log(err)
+})
 
 app.use(passport.initialize());
 
@@ -68,33 +74,44 @@ app.get("/fail", (req, res) => {
 });
 
 
-app.get('/', (req, res) => {
-  res.json('Hello')
+app.get('/', async (req, res) => {
+  const users = await Account.find({name: 'Nawafc'})
+  user = users[0]
+  res.json(user)
 })
 
 app.get('/users/check', AuthToken, (req, res) => {
   res.sendStatus(200)
 })
 
-app.get('/users/info', AuthToken, (req, res) => {
+app.get('/users/info', AuthToken, async (req, res) => {
   if (fbuser == null)
   {
-    res.json(users.filter(user => user.name === req.user.name))
+    const users = await Account.find({name: req.user.name})
+    res.json({name: users[0].name, passport: users[0].password})
   }
   else
   {
-    res.json([{name: fbuser.name}])
+    res.json({name: fbuser.name})
   }
 })
 
 app.post('/users/create', async (req, res) => {
   try {
-    const hashpswd = await bcrypt.hash(req.body.password, 10);
-    users.push({
-      name: req.body.name,
-      password: hashpswd
-    });
-    res.status(201).send();
+    const users = await Account.find({name: req.body.name})
+    if(users[0] == null)
+    {
+      const hashpswd = await bcrypt.hash(req.body.password, 10);
+      const user = new Account({
+        name: req.body.name,
+        password: hashpswd
+      })
+      const savedUser = await user.save()
+      res.status(201).send();
+    }
+    else{
+      res.status(500).send()
+    }
   }
   catch{
     res.status(500).send();
@@ -103,15 +120,16 @@ app.post('/users/create', async (req, res) => {
 
 app.post('/users/login', async (req, res) =>
 {
-  const user = users.find(user => user.name === req.body.name)
+  const users = await Account.find({name: req.body.name})
+  const user = users[0]
   if (user == null)
   {
     res.status(400).send('Cannot find user')
   }
   try {
     if(await bcrypt.compare(req.body.password, user.password)){
-      const accessToken = GenAccessToken(user)
-      const refToken = jwt.sign(user, process.env.REFRESH_TOKEN)
+      const accessToken = GenAccessToken({name: user.name, password: user.password})
+      const refToken = jwt.sign({name: user.name, password: user.password}, process.env.REFRESH_TOKEN)
       refTokenList.push(refToken)
       res.json({accessToken: accessToken, refToken: refToken})
     } else {
