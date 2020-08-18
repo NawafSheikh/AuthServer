@@ -1,11 +1,46 @@
 require('dotenv').config()
 
+const passport = require("passport");
+const strategy = require("passport-facebook");
 const express = require('express')
 var cors = require('cors');
 const app = express()
 const bcrypt = require('bcrypt')
-const jwt = require('jsonwebtoken')
+const jwt = require('jsonwebtoken');
+const e = require('express');
 const port = 3000
+const FacebookStrategy = strategy.Strategy;
+
+fbuser = null
+users = []
+refTokenList = []
+
+app.use(passport.initialize());
+
+passport.serializeUser(function(user, done) {
+  done(null, user);
+});
+
+passport.deserializeUser(function(obj, done) {
+  done(null, obj);
+});
+
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: process.env.FACEBOOK_CLIENT_ID,
+      clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+      callbackURL: process.env.FACEBOOK_CALLBACK_URL,
+      profileFields: ["id", "name"]
+    },
+    function(accessToken, refreshToken, profile, done) {
+      const { id, first_name, last_name } = profile._json;
+      fbuser = {id: id, name: first_name + " " + last_name}
+      done(null, profile)
+
+    }
+  )
+);
 
 app.use(express.json())
 app.use(cors())
@@ -16,20 +51,40 @@ app.use(cors())
   next();
 });
 */
-users = []
-refTokenList = []
+
+app.get('/auth/facebook',
+  passport.authenticate('facebook'));
+
+app.get(
+  "/auth/facebook/callback",
+  passport.authenticate("facebook", {
+    successRedirect: "http://localhost:3001/",
+    failureRedirect: "/fail"
+  })
+);
+
+app.get("/fail", (req, res) => {
+  res.send("Failed attempt");
+});
+
 
 app.get('/', (req, res) => {
   res.json('Hello')
 })
 
 app.get('/users/check', AuthToken, (req, res) => {
-  users.filter(user => user.name === req.user.name)
   res.sendStatus(200)
 })
 
 app.get('/users/info', AuthToken, (req, res) => {
-  res.json(users.filter(user => user.name === req.user.name))
+  if (fbuser == null)
+  {
+    res.json(users.filter(user => user.name === req.user.name))
+  }
+  else
+  {
+    res.json([{name: fbuser.name}])
+  }
 })
 
 app.post('/users/create', async (req, res) => {
@@ -84,15 +139,21 @@ function GenAccessToken (user)
 }
 
 function AuthToken (req, res, next)
-{
-  const authHeader = req.headers['authorization']
-  const token = authHeader && authHeader.split(' ')[1]
-  if (token == null) return res.sendStatus(401)
-  jwt.verify(token, process.env.ACCESS_TOKEN, (err, user) => {
-    if (err) return res.sendStatus(403)
-    req.user = user
+{ if (fbuser == null)
+  {
+    const authHeader = req.headers['authorization']
+    const token = authHeader && authHeader.split(' ')[1]
+    if (token == null) return res.sendStatus(401)
+    jwt.verify(token, process.env.ACCESS_TOKEN, (err, user) => {
+      if (err) return res.sendStatus(403)
+      req.user = user
+      next()
+    })
+  }
+  else
+  {
     next()
-  })
+  }
 }
 
 app.listen(port, () => {
