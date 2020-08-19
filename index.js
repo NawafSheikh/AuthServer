@@ -9,6 +9,7 @@ const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose')
 const Account = require('./models/account')
+const Data = require('./models/data')
 const port = 3000
 const FacebookStrategy = strategy.Strategy;
 
@@ -73,11 +74,63 @@ app.get("/fail", (req, res) => {
   res.send("Failed attempt");
 });
 
+app.get("/users/data", AuthToken, async (req, res) => {
+  try{
+    const users = await Account.find({name: req.user.name})
+    const user = users[0]
+    const data = await Data.find({accountId: user._id})
+    res.json(data)
+  } catch (err) {
+    res.status(500).send(err)
+  }
+})
+
+app.post("/users/data", AuthToken, async (req, res) => {
+  try{
+    const users = await Account.find({name: req.user.name})
+    const user = users[0]
+    const newData = new Data({
+    accountId: user._id,
+    class: req.body.class,
+    subject: req.body.subject,
+    marks: req.body.marks})
+    await newData.save();
+    res.sendStatus(200);
+  } catch (err) {
+    res.status(500).send(err)
+  }
+})
+
+app.patch("/users/data", AuthToken, async (req, res) => {
+  try{
+    const users = await Account.find({name: req.user.name})
+    const user = users[0]
+    await Data.updateOne({accountId: user._id, _id: req.body.id}, {$set: {
+      class: req.body.class,
+      subject: req.body.subject,
+      marks: req.body.marks
+    }})
+    res.sendStatus(200)
+  }
+  catch (err) {
+    res.status(500).send(err)
+  }
+})
+
+app.delete("/users/data/:id", AuthToken, async (req, res) => {
+  try {
+    const users = await Account.find({name: req.user.name})
+    const user = users[0]
+    await Data.deleteMany({accountId: user._id, _id: req.params.id})
+    res.status(200).send()
+  }
+  catch (err) {
+    res.status(500).send(err)
+  }
+})
 
 app.get('/', async (req, res) => {
-  const users = await Account.find({name: 'Nawafc'})
-  user = users[0]
-  res.json(user)
+  res.send("Hello")
 })
 
 app.get('/users/check', AuthToken, (req, res) => {
@@ -87,8 +140,12 @@ app.get('/users/check', AuthToken, (req, res) => {
 app.get('/users/info', AuthToken, async (req, res) => {
   if (fbuser == null)
   {
-    const users = await Account.find({name: req.user.name})
-    res.json({name: users[0].name, passport: users[0].password})
+    try{
+      const users = await Account.find({name: req.user.name})
+      res.json({name: users[0].name, password: users[0].password})
+    } catch {
+      res.status(500).send()
+    }
   }
   else
   {
@@ -120,13 +177,13 @@ app.post('/users/create', async (req, res) => {
 
 app.post('/users/login', async (req, res) =>
 {
-  const users = await Account.find({name: req.body.name})
-  const user = users[0]
-  if (user == null)
-  {
-    res.status(400).send('Cannot find user')
-  }
   try {
+    const users = await Account.find({name: req.body.name})
+    const user = users[0]
+    if (user == null)
+    {
+      res.status(400).send('Cannot find user')
+    }
     if(await bcrypt.compare(req.body.password, user.password)){
       const accessToken = GenAccessToken({name: user.name, password: user.password})
       const refToken = jwt.sign({name: user.name, password: user.password}, process.env.REFRESH_TOKEN)
@@ -153,7 +210,7 @@ app.post('/users/token', (req, res) => {
 
 function GenAccessToken (user)
 {
-  return jwt.sign(user, process.env.ACCESS_TOKEN, {expiresIn:'30s'})
+  return jwt.sign(user, process.env.ACCESS_TOKEN, {expiresIn:'60s'})
 }
 
 function AuthToken (req, res, next)
